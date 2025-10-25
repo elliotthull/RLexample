@@ -1,13 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-'''does the states and actions space need a uppper bound of 4.05 so that 4 is in the range?'''
+
 states = np.arange(0, 4.0, 0.05)
 actions = np.arange(0, 4.0, 0.05)
 
 T = 2
-Q = [np.zeros([round(4 / 0.05), round(4 / 0.05), 2])]
-mu = [np.ones(len(states)) / len(states) for j in range(T)]
+Q = np.zeros([T, round(4 / 0.05), round(4 / 0.05)])
 epsilon = 0.15
 om_q = 0.55
 om_mu = 0.85
@@ -15,7 +14,14 @@ gamma = 0.2
 rho = 0.95
 C = 3
 
+mu = np.ones([T, len(actions)])
 
+for t in range(T):
+    for i in range(len(actions)):
+        mu[t, i] = mu[t, i] / len(actions)
+
+# idk about this factor (gamma in the pseudocode), a value was not mentioned in their description
+discount = 0.95
 
 # given white noise process with specific supports and probabilities
 supp_W = [0.9, 1.3]
@@ -63,28 +69,21 @@ def epsAction (Q_x, state):
         for i in range(0, state + 1):
             if maxim == Q_x[i]:
                 ind.append(i)
-        return actions[ind[np.random.randint(0, len(ind))]]
+        return ind[np.random.randint(0, len(ind))]
     else:
-        return np.random.choice(actions[:state + 1])
+        return np.random.choice(list(range(state + 1)))
 
 # initialize count for finding rho_Q (learning rate)
 count_txa = np.zeros([T, len(states), len(actions)])
 
 
-'''
-C / (pEWgamma * (1 + (C - 1) * np.pow(0.5, 3)))
-'''
-
-num_episodes = 10000
+num_episodes = 200000
 
 # Learning loop
 for k in range(num_episodes):
 
     # Sample initial state 
-    x_idx = np.random.choice(len(states), p=mu[0])
-    
-    # Trajectory storage for mean field update
-    mfg_update = []
+    x_idx = np.random.choice(list(range(0, 21)))
     
     # Episode loop over time periods
     for t in range(T):
@@ -94,18 +93,15 @@ for k in range(num_episodes):
             break
             
         # Current Q values at t
-        Q_xt = Q[0][x_idx, :, t]
+        Q_xt = Q[t, x_idx, :]
         
-        # Select action 
-        a = epsAction(Q_xt, x_idx)
-        a_idx = int(round(a / 0.05))  # Convert action value to index
+        # Select action
+        a_idx = epsAction(Q_xt, x_idx)
         
         # Skip if action exceeds state 
         if a_idx > x_idx:
+            print("act > stat")
             a_idx = x_idx  #Invest everything instead of breaking
-        
-        # Store state-action pair for this time step
-        mfg_update.append((t, x_idx, a_idx))
         
         # Get mean field investment at current time
         mu_t = np.dot(mu[t], actions)
@@ -121,13 +117,17 @@ for k in range(num_episodes):
         # Calculate target
         if t < T - 1:
             if next_x_idx > 0:
-                max_next_Q = np.max(Q[0][next_x_idx, :next_x_idx + 1, t + 1])
+                max_next_Q = discount * np.max(Q[t + 1, next_x_idx, :next_x_idx + 1])
             else:
-                max_next_Q = Q[0][0, 0, t + 1]
+                max_next_Q = discount * Q[t + 1, 0, 0]
             td_target = reward + max_next_Q
         else:
             #end state
-            td_target = reward
+            td_target = reward + rho * np.pow(states[next_x_idx], gamma) / gamma
+
+        # target for mean field
+        a_target = np.zeros(len(actions))
+        a_target[a_idx] = 1
         
         # Update count for learning rate
         count_txa[t, x_idx, a_idx] += 1
@@ -135,20 +135,47 @@ for k in range(num_episodes):
         # Calculate learning rates
         rhos = rhosCalc(count_txa[t, x_idx, a_idx], k)
         rho_Q = rhos['q']
+        rho_Mu = rhos['mu']
         
         # Q-learning update
-        Q[0][x_idx, a_idx, t] = (1 - rho_Q) * Q[0][x_idx, a_idx, t] + rho_Q * td_target
+        Q[t, x_idx, a_idx] = Q[t, x_idx, a_idx] + rho_Q * (td_target - Q[t, x_idx, a_idx])
         
+        # Mean field distribution update
+        mu[t, :] = mu[t, :] + rho_Mu * (a_target - mu[t, :])
+
         # Move to next state
         x_idx = next_x_idx
-    
-    # Mean field distribution update
 
-    
-    # Update mean field distribution for each time step 
-    
-    
-    # update with learning rate
-    
+#for x in range(80):
+    #print("%4.2f: " % (states[x]), end = '')
+    #for a in range(x + 1):
+       # print("%4.2f " % (Q[0, x, a]), end = '')
 
-print(Q)
+   # print("")
+
+# argmaxxing to find optimal policy for each state
+# and plotting to see trend
+optimal = [[], []]
+for x in range(80):
+    optimal[0].append(actions[np.argmax(Q[0, x, :])])
+    optimal[1].append(actions[np.argmax(Q[1, x, :])])
+
+fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(10, 10))
+
+ax0.plot(states, optimal[0], 'k^')
+ax0.set_xticks(np.arange(0, 1.5, 0.2))
+ax0.set_yticks(np.arange(0,0.8,0.1))
+ax0.set_xlim(0, 1.4)
+ax0.set_xlabel('states')
+ax0.set_ylabel('a(t, x)')
+ax0.set_title('Learning Controls for MFG (t=0)')
+
+# Plot for t = 1
+ax1.plot(states, optimal[1], 'r^')
+ax1.set_xticks(np.arange(0, 1.5, 0.2))
+ax1.set_xlim(0, 1.4)
+ax1.set_xlim(0, 1.4)
+ax1.set_xlabel('states')
+ax1.set_ylabel('a(t, x)')
+ax1.set_title('Learning Controls for MFG (t=1)')
+plt.show()
