@@ -74,10 +74,14 @@ def epsAction (Q_x, state):
         return np.random.choice(list(range(state + 1)))
 
 # initialize count for finding rho_Q (learning rate)
+
 count_txa = np.zeros([T, len(states), len(actions)])
 
 
 num_episodes = 200000
+# Track mean field values for each time step
+mean_mu_history = np.zeros((T, num_episodes))
+
 
 # Learning loop
 for k in range(num_episodes):
@@ -145,22 +149,27 @@ for k in range(num_episodes):
 
         # Move to next state
         x_idx = next_x_idx
+    # Record mean investment across actions at t=0 (for tracking)
+    # Record the mean field for each time step after each episode
+    for t in range(T):
+        mean_mu_history[t, k] = np.dot(mu[t], actions)
 
+'''
 #for x in range(80):
     #print("%4.2f: " % (states[x]), end = '')
     #for a in range(x + 1):
        # print("%4.2f " % (Q[0, x, a]), end = '')
 
    # print("")
+'''
 
-# argmaxxing to find optimal policy for each state
-# and plotting to see trend
+#Plotting 
 optimal = [[], []]
 for x in range(80):
     optimal[0].append(actions[np.argmax(Q[0, x, :])])
     optimal[1].append(actions[np.argmax(Q[1, x, :])])
 
-fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(10, 10))
+fig, (ax0, ax1) = plt.subplots(1, 2)
 
 ax0.plot(states, optimal[0], 'k^')
 ax0.set_xticks(np.arange(0, 1.5, 0.2))
@@ -170,12 +179,31 @@ ax0.set_xlabel('states')
 ax0.set_ylabel('a(t, x)')
 ax0.set_title('Learning Controls for MFG (t=0)')
 
+
 # Plot for t = 1
 ax1.plot(states, optimal[1], 'r^')
 ax1.set_xticks(np.arange(0, 1.5, 0.2))
+ax1.set_yticks(np.arange(0, 0.8, 0.1))
 ax1.set_xlim(0, 1.4)
-ax1.set_xlim(0, 1.4)
+ax1.set_ylim(0, 0.7)
 ax1.set_xlabel('states')
-ax1.set_ylabel('a(t, x)')
+ax1.set_ylabel('a(t, x)') 
 ax1.set_title('Learning Controls for MFG (t=1)')
+plt.show()
+
+#mean field plots
+fig, ax = plt.subplots(1, 2, figsize=(10, 10), sharey=True)
+ax[0].plot(range(num_episodes), mean_mu_history[0, :], label='t = 0', color='blue')
+ax[1].plot(range(num_episodes), mean_mu_history[1, :], label='t = 1', color='red')
+ax[0].set_xlim(0,200000)
+ax[0].set_xlabel('Episode')
+ax[0].set_ylabel('Mean Investment μ(t)')
+ax[0].set_title('Evolution of Mean Field Investments')
+ax[0].legend()
+
+ax[1].set_xlabel('Episode')
+ax[1].set_xlim(0,200000)
+ax[1].set_ylabel('Mean Investment μ(t)')
+ax[1].set_title('Evolution of Mean Field Investments')
+ax[1].legend()
 plt.show()
